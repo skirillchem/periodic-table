@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Интерактивная таблица Менделеева</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', Roboto, Arial, sans-serif;
+    background: #f4f6f9;
+    color: #222;
+    min-height: 100vh;
+    padding: 20px;
+  }
+
+  header {
+    max-width: 1200px;
+    margin: 0 auto 20px;
+  }
+  h1 {
+    font-size: 26px;
+    margin-bottom: 6px;
+    color: #1a237e;
+  }
+  .subtitle {
+    color: #666;
+    font-size: 14px;
+  }
+
+  .controls {
+    max-width: 1200px;
+    margin: 0 auto 14px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+  }
+  .controls input,
+  .controls select {
+    padding: 8px 12px;
+    border: 1px solid #c8d0dd;
+    border-radius: 6px;
+    font-size: 14px;
+    background: #fff;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .controls input:focus,
+  .controls select:focus { border-color: #1a73e8; }
+  .controls input { flex: 1 1 220px; max-width: 320px; }
+
+  .legend {
+    max-width: 1200px;
+    margin: 0 auto 14px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    font-size: 12px;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    padding: 3px 6px;
+    border-radius: 4px;
+    transition: background 0.15s;
+  }
+  .legend-item:hover { background: rgba(0,0,0,0.06); }
+  .legend-swatch {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    border: 1px solid rgba(0,0,0,0.1);
+  }
+
+  .table-scroll {
+    overflow-x: auto;
+    padding: 4px 0 20px;
+  }
+  .grid-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    min-width: fit-content;
+  }
+  .grid-header,
+  .periodic-table {
+    display: grid;
+    grid-template-columns: repeat(18, minmax(54px, 1fr));
+    /* ЯВНО ЗАДАЕМ 10 СТРОК, ЧТОБЫ ЛАНТАНОИДЫ И АКТИНОИДЫ ОТОБРАЖАЛИСЬ */
+    grid-template-rows: repeat(10, auto);
+    gap: 3px;
+  }
+  .grid-header {
+    margin-bottom: 3px;
+  }
+  .grid-header span {
+    text-align: center;
+    font-size: 11px;
+    color: #7a8598;
+    font-weight: 600;
+    padding: 2px 0;
+  }
+
+  .el {
+    position: relative;
+    border-radius: 5px;
+    padding: 3px 4px;
+    cursor: pointer;
+    transition: transform 0.12s, box-shadow 0.12s, opacity 0.2s;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 60px;
+    overflow: hidden;
+    color: #111;
+    border: 1px solid rgba(0,0,0,0.06);
+    user-select: none;
+  }
+  .el:hover {
+    transform: scale(1.12);
+    z-index: 20;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.28);
+  }
+  .el .num { font-size: 10px; line-height: 1; opacity: 0.75; font-weight: 600; }
+  .el .sym { font-size: 19px; line-height: 1; font-weight: 700; }
+  .el .nm {
+    font-size: 9px;
+    line-height: 1.05;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    opacity: 0.9;
+  }
+  .el .ms { font-size: 8px; line-height: 1; opacity: 0.65; }
+
+  .el.placeholder {
+    border: 2px dashed rgba(0,0,0,0.18);
+    background: transparent !important;
+    color: #666;
+    font-size: 11px;
+    text-align: center;
+    justify-content: center;
+    align-items: center;
+  }
+  .el.placeholder .sym { font-size: 13px; font-weight: 600; }
+  .el.placeholder .nm { font-size: 9px; }
+
+  .el.dimmed { opacity: 0.12; pointer-events: none; }
+  .el.highlight { outline: 3px solid #1a73e8; outline-offset: -1px; z-index: 5; }
+
+  /* категории */
+  .cat-alkali          { background: #ff8a80; }
+  .cat-alkaline        { background: #ffcc80; }
+  .cat-transition      { background: #ffe082; }
+  .cat-post-transition { background: #c5e1a5; }
+  .cat-metalloid       { background: #80cbc4; }
+  .cat-nonmetal        { background: #81d4fa; }
+  .cat-halogen         { background: #9fa8da; }
+  .cat-noble           { background: #ce93d8; }
+  .cat-lanthanide      { background: #f48fb1; }
+  .cat-actinide        { background: #b39ddb; }
+  .cat-unknown         { background: #bdbdbd; }
+
+  /* модальное окно */
+  .modal {
+    display: none;
+position: fixed;
+    inset: 0;
+    background: rgba(10,15,30,0.65);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    animation: fadeIn 0.15s ease-out;
+  }
+  .modal.open { display: flex; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+  .modal-card {
+    background: #fff;
+    border-radius: 14px;
+    max-width: 520px;
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+    padding: 24px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+    position: relative;
+    animation: pop 0.18s ease-out;
+  }
+  @keyframes pop { from { transform: scale(0.94); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+  .modal-close {
+    position: absolute;
+    top: 12px; right: 12px;
+    background: none; border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #888;
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    transition: background 0.15s;
+  }
+  .modal-close:hover { background: #f0f0f0; color: #222; }
+
+  .el-hero {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 16px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid #e8ecf1;
+  }
+  .el-hero-sym {
+    width: 88px; height: 88px;
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    border: 1px solid rgba(0,0,0,0.08);
+  }
+  .el-hero-sym .n { font-size: 13px; opacity: 0.75; font-weight: 600; }
+  .el-hero-sym .s { font-size: 34px; font-weight: 800; line-height: 1; }
+  .el-hero-text h2 { font-size: 22px; margin-bottom: 4px; }
+  .el-hero-text .badge {
+    display: inline-block;
+    font-size: 11px;
+    padding: 3px 9px;
+    border-radius: 20px;
+    background: #eef2f7;
+    color: #455;
+    font-weight: 600;
+  }
+
+  .info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 16px;
+    font-size: 13px;
+  }
+  .info-item { display: flex; flex-direction: column; gap: 2px; }
+  .info-item .label { color: #7a8598; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; font-weight: 600; }
+  .info-item .value { font-size: 14px; font-weight: 500; }
+  .info-item.full { grid-column: 1 / -1; }
+
+  .config {
+    font-family: 'Courier New', monospace;
+    background: #f4f6f9;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 13px;
+    display: inline-block;
+    margin-top: 2px;
+  }
+
+  @media (max-width: 900px) {
+    .grid-header, .periodic-table {
+      grid-template-columns: repeat(18, 46px);
+    }
+    .el { min-height: 52px; }
+    .el .sym { font-size: 16px; }
+    .el .nm { font-size: 8px; }
+    .el .ms { display: none; }
+    h1 { font-size: 20px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Периодическая таблица Менделеева</h1>
+  <p class="subtitle">Нажмите на элемент для подробной информации. Используйте поиск и фильтры.</p>
+</header>
+
+<div class="controls">
+  <input type="text" id="search" placeholder="Поиск: символ, название или номер…">
+  <select id="filter">
+    <option value="all">Все категории</option>
+    <option value="alkali">Щелочные металлы</option>
+    <option value="alkaline">Щёлочноземельные</option>
+    <option value="transition">Переходные металлы</option>
+    <option value="post-transition">Постпереходные</option>
+    <option value="metalloid">Полуметаллы</option>
+    <option value="nonmetal">Неметаллы</option>
+    <option value="halogen">Галогены</option>
+    <option value="noble">Благородные газы</option>
+    <option value="lanthanide">Лантаноиды</option>
+    <option value="actinide">Актиноиды</option>
+  </select>
+  <select id="heatmap">
+    <option value="none">Без раскраски</option>
+    <option value="en">Электроотрицательность</option>
+    <option value="mp">Температура плавления</option>
+    <option value="bp">Температура кипения</option>
+    <option value="density">Плотность</option>
+  </select>
+</div>
+
+<div class="legend" id="legend"></div>
+
+<div class="table-scroll">
+  <div class="grid-inner">
+    <div class="grid-header" id="gridHeader"></div>
+    <div class="periodic-table" id="table"></div>
+  </div>
+</div>
+
+<div class="modal" id="modal">
+  <div class="modal-card" id="modalCard"></div>
+</div>
+
+<script>
+/* ============================================================
+   ДАННЫЕ: [num, sym, name, mass, cat, en, mp, bp, density, year, state]
+   ============================================================ */
+const elements = [
+  [1,  "H",  "Водород",       1.008,  "nonmetal",       2.20, 14.01,  20.28,  0.00009, 1766, "газ"],
+  [2,  "He", "Гелий",         4.0026, "noble",          null, 0.95,   4.22,   0.00018, 1868, "газ"],
+  [3,  "Li", "Литий",         6.94,   "alkali",         0.98, 453.65, 1615,   0.534,   1817, "тв."],
+  [4,  "Be", "Бериллий",      9.0122, "alkaline",       1.57, 1560,   2742,   1.85,    1798, "тв."],
+  [5,  "B",  "Бор",          10.81,   "metalloid",      2.04, 2349,   4200,   2.34,    1808, "тв."],
+  [6,  "C",  "Углерод",      12.011,  "nonmetal",       2.55, 3800,   4300,   2.267,   -3750,"тв."],
+  [7,  "N",  "Азот",         14.007,  "nonmetal",       3.04, 63.15,  77.36,  0.00125, 1772, "газ"],
+  [8,  "O",  "Кислород",     15.999,  "nonmetal",       3.44, 54.36,  90.20,  0.00143, 1774, "газ"],
+  [9,  "F",  "Фтор",         18.998,  "halogen",        3.98, 53.53,  85.03,  0.0017,  1886, "газ"],
+  [10, "Ne", "Неон",         20.180,  "noble",          null, 24.56,  27.07,  0.0009,  1898, "газ"],
+  [11, "Na", "Натрий",       22.990,  "alkali",         0.93, 370.87, 1156,   0.968,   1807, "тв."],
+  [12, "Mg", "Магний",       24.305,  "alkaline",       1.31, 923,    1363,   1.738,   1755, "тв."],
+  [13, "Al", "Алюминий",     26.982,  "post-transition",1.61, 933.47, 2792,   2.70,    1825, "тв."],
+  [14, "Si", "Кремний",      28.085,  "metalloid",      1.90, 1687,   3538,   2.329,   1824, "тв."],
+  [15, "P",  "Фосфор",       30.974,  "nonmetal",       2.19, 317.30, 550,    1.823,   1669, "тв."],
+  [16, "S",  "Сера",         32.06,   "nonmetal",       2.58, 388.36, 717.87, 2.067,   -2000,"тв."],
+  [17, "Cl", "Хлор",         35.45,   "halogen",        3.16, 171.6,  239.11, 0.0032,  1774, "газ"],
+  [18, "Ar", "Аргон",        39.948,  "noble",          null, 83.80,  87.30,  0.00178, 1894, "газ"],
+  [19, "K",  "Калий",        39.098,  "alkali",         0.82, 336.53, 1032,   0.862,   1807, "тв."],
+  [20, "Ca", "Кальций",      40.078,  "alkaline",       1.00, 1115,   1757,   1.55,    1808, "тв."],
+  [21, "Sc", "Скандий",      44.956,  "transition",     1.36, 1814,   3109,   2.985,   1879, "тв."],
+  [22, "Ti", "Титан",        47.867,  "transition",     1.54, 1941,   3560,   4.506,   1791, "тв."],
+  [23, "V",  "Ванадий",      50.942,  "transition",     1.63, 2183,   3680,   6.11,    1801, "тв."],
+  [24, "Cr", "Хром",         51.996,  "transition",     1.66, 2180,   2944,   7.19,    1797, "тв."],
+  [25, "Mn", "Марганец",     54.938,  "transition",     1.55, 1519,   2334,   7.21,    1774, "тв."],
+  [26, "Fe", "Железо",       55.845,  "transition",     1.83, 1811,   3134,   7.874,   -1500,"тв."],
+  [27, "Co", "Кобальт",      58.933,  "transition",     1.88, 1768,   3200,   8.90,    1735, "тв."],
+  [28, "Ni", "Никель",       58.693,  "transition",     1.91, 1728,   3186,   8.908,   1751, "тв."],
+  [29, "Cu", "Медь",         63.546,  "transition",     1.90, 1357.77,2835,   8.96,    -9000,"тв."],
+  [30, "Zn", "Цинк",         65.38,   "transition",     1.65, 692.88, 1180,   7.14,    1746, "тв."],
+  [31, "Ga", "Галлий",       69.723,  "post-transition",1.81, 302.91, 2673,   5.91,    1875, "тв."],
+  [32, "Ge", "Германий",     72.630,  "metalloid",      2.01, 1211.4, 3106,   5.323,   1886, "тв."],
+  [33, "As", "Мышьяк",       74.922,  "metalloid",      2.18, 1090,   887,    5.727,   1250, "тв."],
+  [34, "Se", "Селен",        78.971,  "nonmetal",       2.55, 453,    958,    4.81,    1817, "тв."],
+  [35, "Br", "Бром",         79.904,  "halogen",        2.96, 265.8,  332,    3.1028,  1825, "жид."],
+  [36, "Kr", "Криптон",      83.798,  "noble",          3.00, 115.79, 119.93, 0.00373, 1898, "газ"],
+  [37, "Rb", "Рубидий",      85.468,  "alkali",         0.82, 312.46, 961,    1.532,   1861, "тв."],
+[38, "Sr", "Стронций",     87.62,   "alkaline",       0.95, 1050,   1655,   2.64,    1790, "тв."],
+  [39, "Y",  "Иттрий",       88.906,  "transition",     1.22, 1799,   3609,   4.472,   1794, "тв."],
+  [40, "Zr", "Цирконий",     91.224,  "transition",     1.33, 2128,   4682,   6.52,    1789, "тв."],
+  [41, "Nb", "Ниобий",       92.906,  "transition",     1.60, 2750,   5017,   8.57,    1801, "тв."],
+  [42, "Mo", "Молибден",     95.95,   "transition",     2.16, 2896,   4912,   10.28,   1781, "тв."],
+  [43, "Tc", "Технеций",     98,      "transition",     1.90, 2430,   4538,   11.0,    1937, "тв."],
+  [44, "Ru", "Рутений",      101.07,  "transition",     2.20, 2607,   4423,   12.45,   1844, "тв."],
+  [45, "Rh", "Родий",        102.91,  "transition",     2.28, 2237,   3968,   12.41,   1803, "тв."],
+  [46, "Pd", "Палладий",     106.42,  "transition",     2.20, 1828.05,3236,  12.023,  1803, "тв."],
+  [47, "Ag", "Серебро",      107.87,  "transition",     1.93, 1234.93,2435,  10.49,   -3000,"тв."],
+  [48, "Cd", "Кадмий",       112.41,  "transition",     1.69, 594.22, 1040,   8.65,    1817, "тв."],
+  [49, "In", "Индий",        114.82,  "post-transition",1.78, 429.75, 2345,   7.31,    1863, "тв."],
+  [50, "Sn", "Олово",        118.71,  "post-transition",1.96, 505.08, 2875,   7.31,    -3500,"тв."],
+  [51, "Sb", "Сурьма",       121.76,  "metalloid",      2.05, 903.78, 1860,   6.697,   -3000,"тв."],
+  [52, "Te", "Теллур",       127.60,  "metalloid",      2.10, 722.66, 1261,   6.24,    1782, "тв."],
+  [53, "I",  "Йод",          126.90,  "halogen",        2.66, 386.85, 457.4,  4.933,   1811, "тв."],
+  [54, "Xe", "Ксенон",       131.29,  "noble",          2.60, 161.4,  165.03, 0.00589, 1898, "газ"],
+  [55, "Cs", "Цезий",        132.91,  "alkali",         0.79, 301.59, 944,    1.93,    1860, "тв."],
+  [56, "Ba", "Барий",        137.33,  "alkaline",       0.89, 1000,   2170,   3.51,    1808, "тв."],
+  [57, "La", "Лантан",       138.91,  "lanthanide",     1.10, 1193,   3737,   6.162,   1839, "тв."],
+  [58, "Ce", "Церий",        140.12,  "lanthanide",     1.12, 1068,   3716,   6.770,   1803, "тв."],
+  [59, "Pr", "Празеодим",    140.91,  "lanthanide",     1.13, 1208,   3793,   6.77,    1885, "тв."],
+  [60, "Nd", "Неодим",       144.24,  "lanthanide",     1.14, 1297,   3347,   7.01,    1885, "тв."],
+  [61, "Pm", "Прометий",     145,     "lanthanide",     1.13, 1315,   3273,   7.26,    1945, "тв."],
+  [62, "Sm", "Самарий",      150.36,  "lanthanide",     1.17, 1345,   2067,   7.52,    1879, "тв."],
+  [63, "Eu", "Европий",      151.96,  "lanthanide",     1.20, 1099,   1802,   5.264,   1901, "тв."],
+  [64, "Gd", "Гадолиний",    157.25,  "lanthanide",     1.20, 1585,   3546,   7.90,    1880, "тв."],
+  [65, "Tb", "Тербий",       158.93,  "lanthanide",     1.20, 1629,   3503,   8.23,    1843, "тв."],
+  [66, "Dy", "Диспрозий",    162.50,  "lanthanide",     1.22, 1680,   2840,   8.540,   1886, "тв."],
+  [67, "Ho", "Гольмий",      164.93,  "lanthanide",     1.23, 1734,   2993,   8.79,    1878, "тв."],
+  [68, "Er", "Эрбий",        167.26,  "lanthanide",     1.24, 1802,   3141,   9.066,   1843, "тв."],
+  [69, "Tm", "Тулий",        168.93,  "lanthanide",     1.25, 1818,   2223,   9.32,    1879, "тв."],
+  [70, "Yb", "Иттербий",     173.05,  "lanthanide",     1.10, 1097,   1469,   6.90,    1878, "тв."],
+  [71, "Lu", "Лютеций",      174.97,  "lanthanide",     1.27, 1925,   3675,   9.841,   1907, "тв."],
+  [72, "Hf", "Гафний",       178.49,  "transition",     1.30, 2506,   4876,   13.31,   1923, "тв."],
+  [73, "Ta", "Тантал",       180.95,  "transition",     1.50, 3290,   5731,   16.654,  1802, "тв."],
+  [74, "W",  "Вольфрам",     183.84,  "transition",     2.36, 3695,   5828,   19.25,   1783, "тв."],
+  [75, "Re", "Рений",        186.21,  "transition",     1.90, 3459,   5869,   21.02,   1925, "тв."],
+  [76, "Os", "Осмий",        190.23,  "transition",     2.20, 3306,   5285,   22.59,   1803, "тв."],
+  [77, "Ir", "Иридий",       192.22,  "transition",     2.20, 2719,   4701,   22.56,   1803, "тв."],
+  [78, "Pt", "Платина",      195.08,  "transition",     2.28, 2041.4, 4098,   21.45,   1735, "тв."],
+  [79, "Au", "Золото",       196.97,  "transition",     2.54, 1337.33,3129,   19.30,   -6000,"тв."],
+  [80, "Hg", "Ртуть",        200.59,  "transition",     2.00, 234.32, 629.88, 13.534,  -1500,"жид."],
+  [81, "Tl", "Таллий",       204.38,  "post-transition",1.62, 577,    1746,   11.85,   1861, "тв."],
+  [82, "Pb", "Свинец",       207.2,   "post-transition",2.33, 600.61, 2022,   11.34,   -7000,"тв."],
+  [83, "Bi", "Висмут",       208.98,  "post-transition",2.02, 544.7,  1837,   9.78,    1753, "тв."],
+  [84, "Po", "Полоний",      209,     "metalloid",      2.00, 527,    1235,   9.196,   1898, "тв."],
+  [85, "At", "Астат",        210,     "halogen",        2.20, 575,    610,    7.0,     1940, "тв."],
+  [86, "Rn", "Радон",        222,     "noble",          2.20, 202,    211.3,  0.00973, 1900, "газ"],
+  [87, "Fr", "Франций",      223,     "alkali",         0.70, 300,    950,    1.87,    1939, "тв."],
+  [88, "Ra", "Радий",        226,     "alkaline",       0.90, 973,    2010,   5.5,     1898, "тв."],
+  [89, "Ac", "Актиний",      227,     "actinide",       1.10, 1323,   3471,   10.07,   1899, "тв."],
+  [90, "Th", "Торий",        232.04,  "actinide",       1.30, 2115,   5061,   11.72,   1829, "тв."],
+  [91, "Pa", "Протактиний",  231.04,  "actinide",       1.50, 1841,   4300,   15.37,   1913, "тв."],
+  [92, "U",  "Уран",         238.03,  "actinide",       1.38, 1405.3, 4404,   19.1,    1789, "тв."],
+  [93, "Np", "Нептуний",     237,     "actinide",       1.36, 917,    4273,   20.45,   1940, "тв."],
+  [94, "Pu", "Плутоний",     244,     "actinide",       1.28, 912.5,  3501,   19.816,  1940, "тв."],
+  [95, "Am", "Америций",     243,     "actinide",       1.13, 1449,   2880,   12.0,    1944, "тв."],
+  [96, "Cm", "Кюрий",        247,     "actinide",       1.28, 1613,   3383,   13.51,   1944, "тв."],
+  [97, "Bk", "Берклий",      247,     "actinide",       1.30, 1259,   2900,   14.78,   1949, "тв."],
+  [98, "Cf", "Калифорний",   251,     "actinide",       1.30, 1173,   1743,   15.1,    1950, "тв."],
+  [99, "Es", "Эйнштейний",   252,     "actinide",       1.30, 1133,   1269,   8.84,    1952, "тв."],
+  [100,"Fm", "Фермий",       257,     "actinide",       1.30, 1800,   null,   9.7,     1952, "тв."],
+  [101,"Md", "Менделевий",   258,     "actinide",       1.30, 1100,   null,   10.3,    1955, "тв."],
+  [102,"No", "Нобелий",      259,     "actinide",       1.30, 1100,   null,   9.9,     1966, "тв."],
+  [103,"Lr", "Лоуренсий",    266,     "actinide",       1.30, 1900,   null,   15.6,    1961, "тв."],
+  [104,"Rf", "Резерфордий",  267,     "transition",     null, 2400,   5800,   23.2,    1964, "тв."],
+  [105,"Db", "Дубний",       268,     "transition",     null, null,   null,   29.3,    1967, "тв."],
+  [106,"Sg", "Сиборгий",     269,     "transition",     null, null,   null,   35.0,    1974, "тв."],
+  [107,"Bh", "Борий",        270,     "transition",     null, null,   null,   37.1,    1981, "тв."],
+  [108,"Hs", "Хассий",       269,     "transition",     null, null,   null,   40.7,    1984, "тв."],
+  [109,"Mt", "Мейтнерий",    278,     "unknown",        null, null,   null,   37.4,    1982, "тв."],
+  [110,"Ds", "Дармштадтий",  281,     "unknown",        null, null,   null,   34.8,    1994, "тв."],
+  [111,"Rg", "Рентгений",    282,     "unknown",        null, null,   null,   28.7,    1994, "тв."],
+  [112,"Cn", "Коперниций",   285,     "unknown",        null, 283,    340,    23.7,    1996, "жид."],
+  [113,"Nh", "Нихоний",      286,     "unknown",        null, 700,    1430,   16.0,    2003, "тв."],
+  [114,"Fl", "Флеровий",     289,     "unknown",        null, 200,    380,    14.0,    1998, "тв."],
+  [115,"Mc", "Московий",     290,     "unknown",        null, 700,    1400,   13.5,    2003, "тв."],
+  [116,"Lv", "Ливерморий",   293,     "unknown",        null, 709,    1085,   12.9,    2000, "тв."],
+  [117,"Ts", "Теннессин",    294,     "unknown",        null, 723,    883,    7.2,     2010, "тв."],
+  [118,"Og", "Оганесон",     294,     "noble",          null, 325,    450,    5.0,     2002, "тв."]
+];
+ /* ========== Раскладка ========== */
+function getPosition(num) {
+  if (num === 1) return [1, 1];
+  if (num === 2) return [18, 1];
+  if (num >= 3 && num <= 4)   return [num - 2, 2];
+  if (num >= 5 && num <= 10)  return [num + 8, 2];
+  if (num >= 11 && num <= 12) return [num - 10, 3];
+  if (num >= 13 && num <= 18) return [num, 3];
+  if (num >= 19 && num <= 36) return [num - 18, 4];
+  if (num >= 37 && num <= 54) return [num - 36, 5];
+  if (num === 55) return [1, 6];
+  if (num === 56) return [2, 6];
+  if (num >= 57 && num <= 71) return [num - 54, 9];
+  if (num >= 72 && num <= 86) return [num - 68, 6];
+  if (num === 87) return [1, 7];
+  if (num === 88) return [2, 7];
+  if (num >= 89 && num <= 103) return [num - 86, 10];
+  if (num >= 104 && num <= 118) return [num - 100, 7];
+  return [1, 1];
+}
+
+/* ========== Названия категорий и цветов ========== */
+const categories = {
+  alkali:          { name: "Щелочные металлы" },
+  alkaline:        { name: "Щёлочноземельные металлы" },
+  transition:      { name: "Переходные металлы" },
+  "post-transition": { name: "Постпереходные металлы" },
+  metalloid:       { name: "Полуметаллы" },
+  nonmetal:        { name: "Неметаллы" },
+  halogen:         { name: "Галогены" },
+  noble:           { name: "Благородные газы" },
+  lanthanide:      { name: "Лантаноиды" },
+  actinide:        { name: "Актиноиды" },
+  unknown:         { name: "Неизвестные свойства" }
+};
+
+/* ========== Построение таблицы ========== */
+const table = document.getElementById('table');
+const gridHeader = document.getElementById('gridHeader');
+
+for (let i = 1; i <= 18; i++) {
+  const s = document.createElement('span');
+  s.textContent = i;
+  gridHeader.appendChild(s);
+}
+
+// плейсхолдеры для f-блока
+function makePlaceholder(col, row, label, cat) {
+  const d = document.createElement('div');
+  d.className = el placeholder cat-${cat};
+  d.style.gridColumn = col;
+  d.style.gridRow = row;
+  d.innerHTML = <div class="sym">${label}</div><div class="nm">${categories[cat].name}</div>;
+  table.appendChild(d);
+}
+makePlaceholder(3, 6, '57–71', 'lanthanide');
+makePlaceholder(3, 7, '89–103', 'actinide');
+
+// элементы
+elements.forEach(el => {
+  const [num, sym, name, mass, cat] = el;
+  const [col, row] = getPosition(num);
+  const div = document.createElement('div');
+  div.className = el cat-${cat};
+  div.style.gridColumn = col;
+  div.style.gridRow = row;
+  div.dataset.num = num;
+  div.dataset.cat = cat;
+  div.dataset.search = ${num} ${sym} ${name}.toLowerCase();
+  div.innerHTML = `
+    <div class="num">${num}</div>
+    <div class="sym">${sym}</div>
+    <div class="nm">${name}</div>
+    <div class="ms">${mass}</div>
+  `;
+  div.addEventListener('click', () => showDetails(el));
+  table.appendChild(div);
+});
+
+/* ========== Легенда ========== */
+const legend = document.getElementById('legend');
+Object.keys(categories).forEach(key => {
+  const item = document.createElement('div');
+  item.className = 'legend-item';
+  item.innerHTML = <div class="legend-swatch cat-${key}"></div><span>${categories[key].name}</span>;
+  item.addEventListener('click', () => {
+    document.getElementById('filter').value = key;
+    applyFilter();
+  });
+  legend.appendChild(item);
+});
+
+/* ========== Модальное окно ========== */
+const modal = document.getElementById('modal');
+const modalCard = document.getElementById('modalCard');
+
+function kToC(k) {
+  if (k == null) return '—';
+  return ${(k - 273.15).toFixed(1)} °C;
+}
+function fmtDensity(d) {
+  if (d == null) return '—';
+  return d < 0.01 ? ${(d * 1000).toFixed(3)} г/л : ${d} г/см³;
+}
+function fmtMass(m) {
+  return Number.isInteger(m) ? m.toString() : m.toFixed(m < 100 ? 4 : 2);
+}
+
+function showDetails(el) {
+  const [num, sym, name, mass, cat, en, mp, bp, density, year, state] = el;
+  const [col, row] = getPosition(num);
+  const period = row <= 7 ? row : (row === 9 ? 6 : 7);
+  const block = getPosition(num)[1] === 9 || getPosition(num)[1] === 10
+    ? 'f'
+    : (col <= 2 ? 's' : (col <= 12 ? 'd' : 'p'));
+  const group = (row === 9 || row === 10) ? '—' : col;
+  const catName = categories[cat].name;
+
+  modalCard.innerHTML = `
+ <button class="modal-close" onclick="closeModal()">×</button>
+    <div class="el-hero">
+      <div class="el-hero-sym cat-${cat}">
+        <span class="n">${num}</span>
+        <span class="s">${sym}</span>
+      </div>
+      <div class="el-hero-text">
+        <h2>${name}</h2>
+        <span class="badge">${catName}</span>
+      </div>
+    </div>
+    <div class="info-grid">
+      <div class="info-item"><span class="label">Атомная масса</span><span class="value">${fmtMass(mass)} а.е.м.</span></div>
+      <div class="info-item"><span class="label">Агрегатное состояние</span><span class="value">${state} (25 °C)</span></div>
+      <div class="info-item"><span class="label">Группа</span><span class="value">${group}</span></div>
+      <div class="info-item"><span class="label">Период</span><span class="value">${period}</span></div>
+      <div class="info-item"><span class="label">Блок</span><span class="value">${block}-блок</span></div>
+      <div class="info-item"><span class="label">Год открытия</span><span class="value">${year < 0 ? ${-year} до н.э. : year}</span></div>
+      <div class="info-item"><span class="label">Электроотрицательность</span><span class="value">${en ?? '—'}</span></div>
+      <div class="info-item"><span class="label">Плотность</span><span class="value">${fmtDensity(density)}</span></div>
+      <div class="info-item"><span class="label">Т. плавления</span><span class="value">${kToC(mp)}</span></div>
+      <div class="info-item"><span class="label">Т. кипения</span><span class="value">${kToC(bp)}</span></div>
+      <div class="info-item full"><span class="label">Электронная конфигурация</span><span class="config">${getConfig(num)}</span></div>
+    </div>
+  `;
+  modal.classList.add('open');
+}
+
+function closeModal() {
+  modal.classList.remove('open');
+}
+modal.addEventListener('click', e => {
+  if (e.target === modal) closeModal();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeModal();
+});
+
+/* ========== Электронная конфигурация (упрощённо) ========== */
+function getConfig(num) {
+  const shells = [
+    { name: '1s', cap: 2 }, { name: '2s', cap: 2 }, { name: '2p', cap: 6 },
+    { name: '3s', cap: 2 }, { name: '3p', cap: 6 }, { name: '4s', cap: 2 },
+    { name: '3d', cap: 10 }, { name: '4p', cap: 6 }, { name: '5s', cap: 2 },
+    { name: '4d', cap: 10 }, { name: '5p', cap: 6 }, { name: '6s', cap: 2 },
+    { name: '4f', cap: 14 }, { name: '5d', cap: 10 }, { name: '6p', cap: 6 },
+    { name: '7s', cap: 2 }, { name: '5f', cap: 14 }, { name: '6d', cap: 10 },
+    { name: '7p', cap: 6 }
+  ];
+  let remaining = num;
+  const parts = [];
+  for (const sh of shells) {
+    if (remaining <= 0) break;
+    const e = Math.min(sh.cap, remaining);
+    parts.push(`${sh.name}${e}`);
+    remaining -= e;
+  }
+  return parts.join(' ');
+}
+
+/* ========== Поиск и фильтр ========== */
+const searchInput = document.getElementById('search');
+const filterSelect = document.getElementById('filter');
+
+function applyFilter() {
+  const q = searchInput.value.trim().toLowerCase();
+  const cat = filterSelect.value;
+  document.querySelectorAll('.el[data-num]').forEach(cell => {
+    const matchesText = q === '' || cell.dataset.search.includes(q);
+    const matchesCat = cat === 'all' || cell.dataset.cat === cat;
+    if (matchesText && matchesCat) {
+      cell.classList.remove('dimmed');
+      if (q !== '' || cat !== 'all') cell.classList.add('highlight');
+      else cell.classList.remove('highlight');
+    } else {
+      cell.classList.add('dimmed');
+      cell.classList.remove('highlight');
+    }
+  });
+}
+searchInput.addEventListener('input', applyFilter);
+filterSelect.addEventListener('change', applyFilter);
+
+/* ========== Тепловая карта ========== */
+const heatmapSelect = document.getElementById('heatmap');
+const propMap = { en: 5, mp: 6, bp: 7, density: 8 };
+
+function applyHeatmap() {
+  const prop = heatmapSelect.value;
+  const cells = document.querySelectorAll('.el[data-num]');
+
+  // сброс
+  cells.forEach(c => {
+    c.style.background = '';
+    c.style.color = '';
+  });
+
+  if (prop === 'none') return;
+ const idx = propMap[prop];
+  const data = elements
+    .map(e => ({ num: e[0], val: e[idx] }))
+    .filter(e => e.val != null && e.val > 0);
+
+  if (data.length === 0) return;
+
+  const minV = Math.min(...data.map(d => d.val));
+  const maxV = Math.max(...data.map(d => d.val));
+  const lmin = Math.log(minV);
+  const lmax = Math.log(maxV);
+
+  // нейтральный цвет для отсутствующих данных
+  cells.forEach(c => {
+    const num = +c.dataset.num;
+    const el = elements.find(e => e[0] === num);
+    if (!el  el[idx] == null  el[idx] <= 0) {
+      c.style.background = '#e0e3e8';
+    }
+  });
+
+  data.forEach(({ num, val }) => {
+    const cell = document.querySelector(`.el[data-num="${num}"]`);
+    if (!cell) return;
+    const t = (Math.log(val) - lmin) / (lmax - lmin);
+    const hue = 240 - t * 240; // синий (низко) → красный (высоко)
+    cell.style.background = hsl(${hue}, 75%, 55%);
+    cell.style.color = t > 0.45 ? '#fff' : '#111';
+  });
+}
+heatmapSelect.addEventListener('change', applyHeatmap);
+</script>
+</body>
+</html>
